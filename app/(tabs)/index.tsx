@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { initializeApp } from '@firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, User } from '@firebase/auth';
+import { FontAwesome } from '@expo/vector-icons';
+import Toast from 'react-native-root-toast';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBX5fmw91abLEpSPoyFFxmEBkuG5kxPXso",
@@ -20,12 +22,39 @@ interface AuthScreenProps {
   setEmail: (email: string) => void;
   password: string;
   setPassword: (password: string) => void;
+  confirmPassword: string;
+  setConfirmPassword: (password: string) => void;
+  isPasswordVisible: boolean;
+  setIsPasswordVisible: (visible: boolean) => void;
+  isConfirmPasswordVisible: boolean;
+  setIsConfirmPasswordVisible: (visible: boolean) => void;
   isLogin: boolean;
   setIsLogin: (isLogin: boolean) => void;
   handleAuthentication: () => void;
+  requirements: {
+    length: boolean;
+    lowercase: boolean;
+    uppercase: boolean;
+    specialChar: boolean;
+  };
 }
 
-const AuthScreen: React.FC<AuthScreenProps> = ({ email, setEmail, password, setPassword, isLogin, setIsLogin, handleAuthentication }) => {
+const AuthScreen: React.FC<AuthScreenProps> = ({
+  email,
+  setEmail,
+  password,
+  setPassword,
+  confirmPassword,
+  setConfirmPassword,
+  isPasswordVisible,
+  setIsPasswordVisible,
+  isConfirmPasswordVisible,
+  setIsConfirmPasswordVisible,
+  isLogin,
+  setIsLogin,
+  handleAuthentication,
+  requirements
+}) => {
   return (
     <View style={styles.authContainer}>
       <Text style={styles.title}>{isLogin ? 'Sign In' : 'Sign Up'}</Text>
@@ -35,14 +64,70 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ email, setEmail, password, setP
         onChangeText={setEmail}
         placeholder="Email"
         autoCapitalize="none"
+        keyboardType="email-address"
       />
-      <TextInput
-        style={styles.input}
-        value={password}
-        onChangeText={setPassword}
-        placeholder="Password"
-        secureTextEntry
-      />
+      <View style={styles.passwordContainer}>
+        <TextInput
+          style={styles.passwordInput}
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Password"
+          secureTextEntry={!isPasswordVisible}
+        />
+        <TouchableOpacity onPress={() => setIsPasswordVisible(!isPasswordVisible)}>
+          <FontAwesome name={isPasswordVisible ? 'eye-slash' : 'eye'} size={24} color="grey" />
+        </TouchableOpacity>
+      </View>
+      {!isLogin && (
+        <>
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              placeholder="Confirm Password"
+              secureTextEntry={!isConfirmPasswordVisible}
+            />
+            <TouchableOpacity onPress={() => setIsConfirmPasswordVisible(!isConfirmPasswordVisible)}>
+              <FontAwesome name={isConfirmPasswordVisible ? 'eye-slash' : 'eye'} size={24} color="grey" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.requirementsContainer}>
+            <View style={styles.requirement}>
+              <FontAwesome
+                name={requirements.length ? 'check-circle' : 'times-circle'}
+                size={24}
+                color={requirements.length ? 'green' : 'red'}
+              />
+              <Text style={styles.requirementText}>Minimum 8 characters</Text>
+            </View>
+            <View style={styles.requirement}>
+              <FontAwesome
+                name={requirements.lowercase ? 'check-circle' : 'times-circle'}
+                size={24}
+                color={requirements.lowercase ? 'green' : 'red'}
+              />
+              <Text style={styles.requirementText}>At least one lowercase letter</Text>
+            </View>
+            <View style={styles.requirement}>
+              <FontAwesome
+                name={requirements.uppercase ? 'check-circle' : 'times-circle'}
+                size={24}
+                color={requirements.uppercase ? 'green' : 'red'}
+              />
+              <Text style={styles.requirementText}>At least one uppercase letter</Text>
+            </View>
+            <View style={styles.requirement}>
+              <FontAwesome
+                name={requirements.specialChar ? 'check-circle' : 'times-circle'}
+                size={24}
+                color={requirements.specialChar ? 'green' : 'red'}
+              />
+              <Text style={styles.requirementText}>At least one special character</Text>
+            </View>
+          </View>
+        </>
+      )}
       <View style={styles.buttonContainer}>
         <Button title={isLogin ? 'Sign In' : 'Sign Up'} onPress={handleAuthentication} color="#3498db" />
       </View>
@@ -73,8 +158,17 @@ const AuthenticatedScreen: React.FC<AuthenticatedScreenProps> = ({ user, handleA
 const App: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [user, setUser] = useState<User | null>(null); // Track user authentication state
   const [isLogin, setIsLogin] = useState(true);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
+  const [requirements, setRequirements] = useState({
+    length: false,
+    lowercase: false,
+    uppercase: false,
+    specialChar: false,
+  });
 
   const auth = getAuth(app);
   
@@ -100,6 +194,16 @@ const App: React.FC = () => {
           console.log('User signed in successfully!');
         } else {
           // Sign up
+          if (!validateEmail(email)) {
+            showToast('Invalid email address');
+            return;
+          }
+
+          if (password !== confirmPassword) {
+            showToast('Passwords do not match');
+            return;
+          }
+
           await createUserWithEmailAndPassword(auth, email, password);
           console.log('User created successfully!');
         }
@@ -107,12 +211,40 @@ const App: React.FC = () => {
     } catch (error) {
       if (error instanceof Error) {
         console.error('Authentication error:', error.message);
+        showToast(error.message);
       } else {
         console.error('Unexpected error:', error);
       }
     }
   };
-  
+
+  const handlePasswordChange = (password: string) => {
+    setPassword(password);
+    setRequirements({
+      length: password.length >= 8,
+      lowercase: /[a-z]/.test(password),
+      uppercase: /[A-Z]/.test(password),
+      specialChar: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+    });
+  };
+
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const showToast = (message: string) => {
+    Toast.show(message, {
+      duration: Toast.durations.LONG,
+      position: Toast.positions.BOTTOM,
+      shadow: true,
+      animation: true,
+      hideOnPress: true,
+      delay: 0,
+      backgroundColor: '#e74c3c',
+      textColor: '#fff',
+    });
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -125,10 +257,17 @@ const App: React.FC = () => {
           email={email}
           setEmail={setEmail}
           password={password}
-          setPassword={setPassword}
+          setPassword={handlePasswordChange}
+          confirmPassword={confirmPassword}
+          setConfirmPassword={setConfirmPassword}
+          isPasswordVisible={isPasswordVisible}
+          setIsPasswordVisible={setIsPasswordVisible}
+          isConfirmPasswordVisible={isConfirmPasswordVisible}
+          setIsConfirmPasswordVisible={setIsConfirmPasswordVisible}
           isLogin={isLogin}
           setIsLogin={setIsLogin}
           handleAuthentication={handleAuthentication}
+          requirements={requirements}
         />
       )}
     </ScrollView>
@@ -164,6 +303,18 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 4,
   },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderColor: '#ddd',
+    borderWidth: 1,
+    borderRadius: 4,
+    padding: 8,
+    marginBottom: 16,
+  },
+  passwordInput: {
+    flex: 1,
+  },
   buttonContainer: {
     marginBottom: 16,
   },
@@ -178,6 +329,18 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
     marginBottom: 20,
+  },
+  requirementsContainer: {
+    marginBottom: 16,
+  },
+  requirement: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  requirementText: {
+    marginLeft: 8,
+    color: '#555',
   },
 });
 
